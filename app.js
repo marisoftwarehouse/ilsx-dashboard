@@ -54,6 +54,11 @@ let oracleAutoInterval = null;
 let lastOracleOnline = false;
 window.provider = null;
 
+// נשמור גם את השערים האחרונים מה־Oracle לשימוש בכפתור "העתק שער עדכני"
+window.latestOracleEthUsd = null;
+window.latestOracleUsdIls = null;
+window.latestOracleEthIls = null;
+
 /* --------------------------------------------------------
    TX HISTORY (LocalStorage)
 ---------------------------------------------------------*/
@@ -366,13 +371,46 @@ document.getElementById("sellButton").onclick = async () => {
 /* --------------------------------------------------------
    UPDATE RATE (Admin-only)
 ---------------------------------------------------------*/
+
+// כפתור "העתק שער עדכני" – ממלא את השדה מתוך ה־Oracle האחרון
+const copyOracleRateButton = document.getElementById("copyOracleRateButton");
+if (copyOracleRateButton) {
+  copyOracleRateButton.onclick = () => {
+    const ethUsd = window.latestOracleEthUsd;
+    const usdIls = window.latestOracleUsdIls;
+
+    if (!ethUsd || !usdIls || ethUsd <= 0 || usdIls <= 0) {
+      alert("השער העדכני אינו זמין כרגע. נסה לרענן את ה־Oracle או להתחבר מחדש.");
+      return;
+    }
+
+    const ethIls = ethUsd * usdIls; // כמה ILS עבור ETH אחד
+    const input = document.getElementById("newRate");
+    if (input) {
+      input.value = ethIls.toFixed(4);
+    }
+  };
+}
+
 document.getElementById("setRateButton").onclick = async () => {
-  const rate = document.getElementById("newRate").value.trim();
+  const input = document.getElementById("newRate");
   const status = document.getElementById("setRateStatus");
 
+  let rate = input.value.trim();
+
+  // אם השדה ריק – ננסה להשתמש בשער העדכני מה־Oracle
   if (!rate) {
-    status.textContent = "נא להזין שער";
-    return;
+    const ethUsd = window.latestOracleEthUsd;
+    const usdIls = window.latestOracleUsdIls;
+
+    if (ethUsd && usdIls && ethUsd > 0 && usdIls > 0) {
+      const ethIls = ethUsd * usdIls;
+      rate = ethIls.toFixed(4);
+      input.value = rate;
+    } else {
+      status.textContent = "אין שער עדכני זמין. לחץ על 'העתק שער עדכני' או הזן ידנית.";
+      return;
+    }
   }
 
   try {
@@ -386,6 +424,8 @@ document.getElementById("setRateButton").onclick = async () => {
     saveTx("SetRate", `Updated rate to ${rate} ILSX/ETH`);
 
     await loadContractInfo();
+    // רענון גם של ה־Oracle להצגה עקבית
+    await loadOracleData();
   } catch (err) {
     status.textContent = "❌ " + err.message;
   }
@@ -681,10 +721,31 @@ const aggregatorAbi = [
   }
 ];
 
-async function getUsdIlsRate() {
-  try {
-    console.log("Fetching USD/ILS ...");
+/* --------------------------------------------------------
+   FX HELPERS — USD/ILS & ETH/USD
+   שימוש ב-API חינמי ומדויק יותר, עם fallback ל-API הקודם
+---------------------------------------------------------*/
 
+async function getUsdIlsRate() {
+  // ניסיון ראשי: exchangerate.host (חינמי, ללא API KEY)
+  try {
+    const res = await fetch("https://api.exchangerate.host/latest?base=USD&symbols=ILS");
+
+    if (res.ok) {
+      const json = await res.json();
+      if (json && json.rates && json.rates.ILS) {
+        console.log("FX API (exchangerate.host) ILS:", json.rates.ILS);
+        return json.rates.ILS;
+      }
+    } else {
+      console.log("❌ exchangerate.host HTTP Error:", res.status);
+    }
+  } catch (err) {
+    console.log("❌ exchangerate.host fetch error:", err);
+  }
+
+  // Fallback: open.er-api.com (ה־API שבו השתמשת קודם)
+  try {
     const res = await fetch("https://open.er-api.com/v6/latest/USD");
 
     if (!res.ok) {
@@ -693,8 +754,6 @@ async function getUsdIlsRate() {
     }
 
     const json = await res.json();
-    console.log("FX API response:", json);
-
     if (!json || !json.rates || !json.rates.ILS) {
       console.log("❌ FX API returned no ILS rate!");
       return null;
@@ -703,71 +762,84 @@ async function getUsdIlsRate() {
     return json.rates.ILS;
 
   } catch (err) {
-    console.log("❌ FX API fetch error:", err);
+    console.log("❌ FX API fetch error (fallback):", err);
     return null;
   }
 }
 
 
 async function getEthUsdRate() {
-  console.log("----- Oracle ETH/USD Debug START -----");
 
+  // ניסיון ראשי: Chainlink על Sepolia
   try {
-    console.log("Creating RPC provider...");
     const rpc = new ethers.JsonRpcProvider(
       "https://sepolia.infura.io/v3/fda2863bb17f492dbe50418435f09efd"
     );
-    console.log("RPC provider created:", rpc ? "OK" : "FAILED");
-
-    console.log("Creating feed contract...");
     const feed = new ethers.Contract(ETH_USD_FEED, aggregatorAbi, rpc);
-    console.log("Feed Contract:", feed ? "OK" : "FAILED");
 
-    console.log("Calling feed.decimals()...");
     const decimalsBig = await feed.decimals();
-    console.log("decimalsBig:", decimalsBig);
 
     if (!decimalsBig) {
       console.log("❌ decimalsBig is null/undefined");
-      return null;
+      throw new Error("No decimals from Chainlink");
     }
 
     const decimals = Number(decimalsBig.toString());
-    console.log("decimals (number):", decimals);
 
-    console.log("Calling latestRoundData()...");
     const round = await feed.latestRoundData();
-    console.log("latestRoundData raw:", round);
 
     const answerBig = round[1];
-    console.log("answerBig:", answerBig);
 
     if (answerBig == null) {
       console.log("❌ answerBig is null/undefined");
-      return null;
+      throw new Error("No answer from Chainlink");
     }
     if (answerBig <= 0n) {
       console.log("❌ answerBig <= 0n");
-      return null;
+      throw new Error("Non-positive answer from Chainlink");
     }
 
     const answer = Number(answerBig.toString());
-    console.log("answer (Number):", answer);
 
     const scale = 10 ** decimals;
-    console.log("scale:", scale);
 
     const result = answer / scale;
-    console.log("ETH/USD result =>", result);
 
-    console.log("----- Oracle ETH/USD Debug END -----");
     return result;
 
   } catch (e) {
-    console.log("❌ ERROR in getEthUsdRate:");
+    console.log("❌ ERROR in getEthUsdRate (Chainlink failed):");
     console.error(e);
-    console.log("----- Oracle ETH/USD Debug END (ERROR) -----");
-    return null;
+    console.log("Trying public REST fallback (CoinGecko)...");
+
+    // Fallback: CoinGecko public API ל-ETH/USD
+    try {
+      const res = await fetch(
+        "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"
+      );
+      if (!res.ok) {
+        console.log("❌ CoinGecko HTTP Error:", res.status);
+        return null;
+      }
+      const json = await res.json();
+      if (
+        json &&
+        json.ethereum &&
+        typeof json.ethereum.usd === "number" &&
+        json.ethereum.usd > 0
+      ) {
+        console.log("CoinGecko ETH/USD:", json.ethereum.usd);
+        console.log("----- Oracle ETH/USD Debug END (CoinGecko) -----");
+        return json.ethereum.usd;
+      }
+      console.log("❌ CoinGecko returned invalid ETH/USD");
+      console.log("----- Oracle ETH/USD Debug END (CoinGecko ERROR) -----");
+      return null;
+    } catch (err) {
+      console.log("❌ ERROR in CoinGecko fallback:", err);
+      console.log("----- Oracle ETH/USD Debug END (ERROR) -----");
+      return null;
+    }
   }
 }
 
@@ -790,7 +862,6 @@ async function loadOracleData() {
   }
 
   const ethIls = ethUsd * usdIls;
-  console.log("Updating DOM:", { ethUsd, usdIls, ethIls });
 
   const ethUsdEl = document.getElementById("oracleEthUsd");
   if (ethUsdEl) ethUsdEl.textContent = ethUsd.toFixed(2);
@@ -803,6 +874,11 @@ async function loadOracleData() {
 
   const tsEl = document.getElementById("oracleTimestamp");
   if (tsEl) tsEl.textContent = new Date().toLocaleString();
+
+  // שמירה גלובלית לשימוש בכפתור "העתק שער עדכני"
+  window.latestOracleEthUsd = ethUsd;
+  window.latestOracleUsdIls = usdIls;
+  window.latestOracleEthIls = ethIls;
 
   setOracleStatus(true);
   updateOracleHistory(ethUsd, usdIls, ethIls);
