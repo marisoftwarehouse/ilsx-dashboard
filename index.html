@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+  <meta charset="UTF-8" />
+  <title>ILSX Admin Dashboard</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Ethers.js v6 -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+
+  <style>
+    body {
+      direction: rtl;
+      background: #020617;
+      color: #e5e7eb;
+    }
+    input {
+      direction: ltr;
+    }
+    .fade-in {
+      opacity: 0;
+      transform: translateY(10px);
+      animation: fadeInUp 0.5s ease-out forwards;
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="min-h-screen flex flex-row-reverse bg-slate-950 text-slate-100">
+
+    <!-- SIDEBAR -->
+    <aside class="hidden md:flex w-64 bg-slate-900/90 border-l border-slate-800 flex-col justify-between px-4 py-6">
+      <div>
+        <div class="flex items-center gap-3 mb-8">
+          <div class="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-xl font-bold">₪</div>
+          <div>
+            <div class="font-bold text-lg">ILSX</div>
+            <div class="text-xs text-slate-400">Israeli Digital Shekel</div>
+          </div>
+        </div>
+
+        <nav class="space-y-2 text-sm">
+          <button data-section="section-dashboard" class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">סקירת מערכת</button>
+          <button data-section="section-chart"    class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">גרף היצע</button>
+
+          <!-- NEW: Oracle Chart -->
+          <button data-section="section-oracle-chart" class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">
+            גרף שער ETH/ILS
+          </button>
+
+          <button data-section="section-contract" class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">נתוני החוזה</button>
+          <button data-section="section-reserve"  class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">שער ורזרבות</button>
+          <button data-section="section-account"  class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">החשבון שלי</button>
+          <button data-section="section-mint"     class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">הנפקה ושריפה</button>
+          <button data-section="section-security" class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">אבטחה</button>
+          <button data-section="section-history"  class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">היסטוריה</button>
+        </nav>
+      </div>
+
+      <div class="mt-6 text-xs text-slate-400 border-t border-slate-800 pt-4">
+        <div>רשת: Sepolia Testnet</div>
+        <div class="mt-1">Contract: <span class="font-mono text-[10px]" id="sidebarContractShort">—</span></div>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <main id="mainScroll" class="flex-1 md:pt-6 pt-16 px-4 md:px-8 h-screen overflow-y-auto">
+      <div class="max-w-4xl mx-auto space-y-8 pb-10">
+
+        <!-- DASHBOARD -->
+        <section id="section-dashboard" class="bg-slate-900/80 rounded-2xl shadow-xl border border-slate-800 p-6 fade-in">
+          <h1 class="text-3xl font-bold">ILSX Admin Dashboard</h1>
+          <button id="connectButton" class="px-6 py-3 rounded-full bg-blue-600 hover:bg-blue-700 mt-4">🔌 התחבר ל-MetaMask</button>
+          <p id="connectionStatus" class="text-xs mt-2"></p>
+        </section>
+
+        <!-- SUPPLY CHART -->
+        <section id="section-chart" class="bg-slate-900/80 rounded-2xl shadow-xl border border-slate-800 p-6 fade-in">
+          <h2 class="text-xl font-bold mb-4">גרף היצע</h2>
+          <canvas id="supplyChart" class="w-full h-64"></canvas>
+        </section>
+
+        <!-- ORACLE CHART (ETH/ILS) -->
+        <section id="section-oracle-chart" class="bg-slate-900/80 rounded-2xl shadow-xl border border-slate-800 p-6 fade-in">
+          <h2 class="text-xl font-bold mb-4">גרף שער ETH/ILS</h2>
+          <canvas id="oracleChart" class="w-full h-64"></canvas>
+        </section>
+
+        <!-- CONTRACT INFO -->
+        <section id="section-contract" class="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 fade-in">
+          <h2 class="text-xl font-bold text-center mb-6">נתוני החוזה</h2>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <div><p>Contract</p><p id="contractAddress" class="font-mono text-xs"></p></div>
+            <div><p>Name</p><p id="tokenName"></p></div>
+            <div><p>Symbol</p><p id="tokenSymbol"></p></div>
+            <div><p>Total Supply</p><p id="totalSupply"></p></div>
+            <div><p>שער (TokensPerEth)</p><p id="rateInfo"></p></div>
+            <div><p>רזרבה (ETH)</p><p id="reserveInfo"></p></div>
+          </div>
+        </section>
+
+        <!-- RESERVE + RATE MANAGEMENT -->
+        <section id="section-reserve" class="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 fade-in">
+
+          <!-- ORACLE LIVE DATA -->
+          <div class="mb-6 p-4 rounded-2xl bg-slate-800/50 border border-slate-700">
+            <h3 class="font-bold text-lg mb-3">🔮 שערים חיים (Oracle)</h3>
+
+            <!-- NEW: ORACLE STATUS -->
+            <p id="oracleStatus" class="text-xs mb-3"></p>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div>
+                <p class="text-slate-400">ETH/USD</p>
+                <p id="oracleEthUsd" class="font-mono"></p>
+              </div>
+
+              <div>
+                <p class="text-slate-400">USD/ILS</p>
+                <p id="oracleUsdIls" class="font-mono"></p>
+              </div>
+
+              <div>
+                <p class="text-slate-400">ETH/ILS</p>
+                <p id="oracleEthIls" class="font-mono font-bold"></p>
+              </div>
+            </div>
+
+            <p class="text-xs mt-3 text-slate-500">עודכן לאחרונה:
+              <span id="oracleTimestamp"></span>
+            </p>
+
+            <button id="oracleUpdateButton"
+                    class="mt-3 px-5 py-2 rounded-full bg-blue-600 hover:bg-blue-700 text-sm">
+              רענן שער (Oracle)
+            </button>
+
+            <p id="oracleUpdateStatus" class="text-xs mt-2"></p>
+          </div>
+
+          <h2 class="text-xl font-bold text-center mb-6">ניהול שער ורזרבה</h2>
+
+          <!-- RATE (Admin Only) -->
+          <div class="border-b border-slate-800 pb-6 mb-6 admin-only">
+            <h3 class="font-semibold mb-3">עדכון שער המרה (ILSX עבור 1 ETH)</h3>
+
+            <input id="newRate" placeholder="לדוגמה: 1000"
+                   class="w-full bg-slate-800 rounded-xl px-4 py-3 mt-1"/>
+
+            <button id="setRateButton" class="mt-3 px-6 py-3 rounded-full bg-purple-600">
+              עדכן שער
+            </button>
+
+            <p id="setRateStatus" class="text-xs mt-3"></p>
+          </div>
+
+          <!-- FUND (Admin Only) -->
+          <div class="border-b border-slate-800 pb-6 mb-6 admin-only">
+            <h3 class="font-semibold mb-3">הפקדת ETH לרזרבה</h3>
+
+            <input id="fundAmount" placeholder="לדוגמה: 0.5"
+                   class="w-full bg-slate-800 rounded-xl px-4 py-3 mt-1"/>
+
+            <button id="fundButton" class="mt-3 px-6 py-3 rounded-full bg-green-600">
+              הפקד רזרבה
+            </button>
+
+            <p id="fundStatus" class="text-xs mt-3"></p>
+          </div>
+
+          <!-- WITHDRAW (Admin Only) -->
+          <div class="admin-only">
+            <h3 class="font-semibold mb-3">משיכת רזרבה</h3>
+
+            <input id="withdrawAmount" placeholder="כמות ETH למשיכה"
+                   class="w-full bg-slate-800 rounded-xl px-4 py-3 mt-1"/>
+
+            <input id="withdrawAddress" placeholder="כתובת יעד"
+                   class="w-full bg-slate-800 rounded-xl px-4 py-3 mt-3"/>
+
+            <button id="withdrawButton" class="mt-3 px-6 py-3 rounded-full bg-red-600">
+              משוך רזרבה
+            </button>
+
+            <p id="withdrawStatus" class="text-xs mt-3"></p>
+          </div>
+
+          <!-- CHECK BLACKLIST (open to all) -->
+          <div class="border-t border-slate-800 pt-6 mt-6">
+            <h3 class="font-semibold mb-3">בדיקת סטטוס Blacklist</h3>
+
+            <input id="checkBlacklistAddress" placeholder="כתובת"
+                   class="w-full bg-slate-800 rounded-xl px-4 py-3 mt-1"/>
+
+            <button id="checkBlacklistButton" class="mt-3 px-6 py-3 rounded-full bg-blue-600">
+              בדוק סטטוס
+            </button>
+
+            <p id="checkBlacklistStatus" class="text-xs mt-3"></p>
+          </div>
+        </section>
+
+        <!-- ACCOUNT -->
+        <section id="section-account" class="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 fade-in">
+          <h2 class="text-xl font-bold text-center mb-6">החשבון שלי</h2>
+
+          <p>כתובת</p><p id="myAddress" class="font-mono text-xs"></p>
+          <p class="mt-4">Balance</p><p id="myBalance"></p>
+          <p class="mt-4">Roles</p><p id="roleList"></p>
+
+          <div class="border-t border-slate-800 mt-6 pt-6">
+            <h3 class="font-semibold mb-3">קנייה ומכירה</h3>
+
+            <p>קנה ב־ETH</p>
+            <input id="buyEthAmount" class="w-full bg-slate-800 rounded-xl px-3 py-2 mt-1"/>
+            <button id="buyButton" class="mt-3 px-6 py-3 rounded-full bg-green-600">קנה</button>
+            <p id="buyStatus" class="text-xs mt-2"></p>
+
+            <p class="mt-6">מכור ILSX</p>
+            <input id="sellAmount" class="w-full bg-slate-800 rounded-xl px-3 py-2 mt-1"/>
+            <button id="sellButton" class="mt-3 px-6 py-3 rounded-full bg-red-600">מכור</button>
+            <p id="sellStatus" class="text-xs mt-2"></p>
+          </div>
+        </section>
+
+        <!-- MINT (Admin Only) -->
+        <section id="section-mint" class="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 fade-in admin-only">
+          <h2 class="text-xl font-bold text-center mb-6">הנפקה ושריפה</h2>
+
+          <h3>Mint</h3>
+          <input id="mintAddress" placeholder="כתובת" class="w-full bg-slate-800 rounded-xl px-3 py-2"/>
+          <input id="mintAmount" placeholder="כמות" class="w-full bg-slate-800 rounded-xl px-3 py-2 mt-2"/>
+          <button id="mintButton" class="mt-3 px-6 py-3 rounded-full bg-green-600">MINT</button>
+          <p id="mintStatus" class="text-xs mt-2"></p>
+
+          <h3 class="mt-10">Burn</h3>
+          <input id="burnAmount" placeholder="כמות" class="w-full bg-slate-800 rounded-xl px-3 py-2"/>
+          <button id="burnButton" class="mt-3 px-6 py-3 rounded-full bg-red-600">BURN</button>
+          <p id="burnStatus" class="text-xs mt-2"></p>
+        </section>
+
+        <!-- SECURITY -->
+        <section id="section-security" class="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 fade-in admin-only">
+          <h2 class="text-xl font-bold text-center mb-6">אבטחה</h2>
+
+          <button id="pauseButton" class="px-6 py-3 rounded-full bg-yellow-400 text-black">PAUSE</button>
+          <button id="unpauseButton" class="px-6 py-3 rounded-full bg-blue-600 mt-3">UNPAUSE</button>
+          <p id="pauseStatus" class="text-xs mt-3"></p>
+
+          <h3 class="mt-10">Blacklist</h3>
+          <input id="blacklistAddress" class="w-full bg-slate-800 rounded-xl px-4 py-3"/>
+          <button id="blacklistButton" class="px-6 py-3 rounded-full bg-red-600 mt-3">חסום</button>
+          <button id="unblacklistButton" class="px-6 py-3 rounded-full bg-green-600 mt-3">שחרר</button>
+          <p id="blacklistStatus" class="text-xs mt-3"></p>
+        </section>
+
+        <!-- HISTORY -->
+        <section id="section-history" class="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 fade-in">
+          <h2 class="text-xl font-bold text-center mb-6">היסטוריית פעולות</h2>
+          <div id="txHistory" class="space-y-4"></div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
