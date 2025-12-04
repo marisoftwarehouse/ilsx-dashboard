@@ -19,7 +19,7 @@
       background: #020617;
       color: #e5e7eb;
     }
-    input {
+    input, select {
       direction: ltr;
     }
     .fade-in {
@@ -52,7 +52,7 @@
           <button data-section="section-dashboard" class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">סקירת מערכת</button>
           <button data-section="section-chart"    class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">גרף היצע</button>
 
-          <!-- NEW: Oracle Chart -->
+          <!-- Oracle Chart -->
           <button data-section="section-oracle-chart" class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">
             גרף שער ETH/ILS
           </button>
@@ -63,6 +63,8 @@
           <button data-section="section-mint"     class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">הנפקה ושריפה</button>
           <button data-section="section-security" class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">אבטחה</button>
           <button data-section="section-history"  class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">היסטוריה</button>
+          <!-- NEW: Analytics -->
+          <button data-section="section-analytics" class="nav-btn w-full text-right px-3 py-2 rounded-xl hover:bg-slate-800 transition">אנליטיקות</button>
         </nav>
       </div>
 
@@ -116,7 +118,7 @@
           <div class="mb-6 p-4 rounded-2xl bg-slate-800/50 border border-slate-700">
             <h3 class="font-bold text-lg mb-3">🔮 שערים חיים (Oracle)</h3>
 
-            <!-- NEW: ORACLE STATUS -->
+            <!-- ORACLE STATUS -->
             <p id="oracleStatus" class="text-xs mb-3"></p>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -160,7 +162,7 @@
             <button id="setRateButton" class="mt-3 px-6 py-3 rounded-full bg-purple-600">
               עדכן שער
             </button>
-                        <!-- NEW BUTTON -->
+            <!-- NEW BUTTON -->
             <button id="copyOracleRateButton"
                     class="mt-3 px-5 py-2 rounded-full bg-blue-700 hover:bg-blue-800 text-sm">
               העתק שער עדכני
@@ -267,6 +269,43 @@
           <button id="blacklistButton" class="px-6 py-3 rounded-full bg-red-600 mt-3">חסום</button>
           <button id="unblacklistButton" class="px-6 py-3 rounded-full bg-green-600 mt-3">שחרר</button>
           <p id="blacklistStatus" class="text-xs mt-3"></p>
+
+          <!-- NEW: ROLE MANAGEMENT -->
+          <div class="mt-10 border-t border-slate-800 pt-6">
+            <h3 class="font-semibold mb-3">ניהול הרשאות (Roles)</h3>
+
+            <p class="text-sm text-slate-400 mb-2">
+              כאדמין ניתן להוסיף או להסיר תפקידי מערכת מארנקים אחרים.
+            </p>
+
+            <input id="roleManageAddress"
+                   placeholder="כתובת ארנק יעד"
+                   class="w-full bg-slate-800 rounded-xl px-4 py-3 mt-1" />
+
+            <select id="roleManageType"
+                    class="w-full bg-slate-800 rounded-xl px-4 py-3 mt-3">
+              <option value="MINTER_ROLE">MINTER_ROLE</option>
+              <option value="BURNER_ROLE">BURNER_ROLE</option>
+              <option value="PAUSER_ROLE">PAUSER_ROLE</option>
+              <option value="BLACKLISTER_ROLE">BLACKLISTER_ROLE</option>
+              <option value="RESERVE_ROLE">RESERVE_ROLE</option>
+              <option value="RATE_SETTER_ROLE">RATE_SETTER_ROLE</option>
+              <option value="FREEZER_ROLE">FREEZER_ROLE</option>
+            </select>
+
+            <div class="flex flex-wrap gap-3 mt-4">
+              <button id="grantRoleButton"
+                      class="px-6 py-3 rounded-full bg-green-600">
+                הוסף הרשאה
+              </button>
+              <button id="revokeRoleButton"
+                      class="px-6 py-3 rounded-full bg-red-600">
+                הסר הרשאה
+              </button>
+            </div>
+
+            <p id="roleManageStatus" class="text-xs mt-3"></p>
+          </div>
         </section>
 
         <!-- HISTORY -->
@@ -275,10 +314,156 @@
           <div id="txHistory" class="space-y-4"></div>
         </section>
 
-      </div>
-    </main>
+        <!-- ANALYTICS / ON-CHAIN REPORTS -->
+<section id="section-analytics"
+         class="bg-slate-900/80 rounded-2xl border border-slate-800 p-6 fade-in">
+  <h2 class="text-xl font-bold text-center mb-6">אנליטיקות וסטטיסטיקות On-Chain</h2>
+
+
+  <!-- סיכום כללי -->
+  <div class="grid gap-4 md:grid-cols-3 mb-8 text-sm">
+    <div class="p-4 rounded-xl bg-slate-800/70 border border-slate-700">
+      <p class="text-slate-400">היצע נוכחי (On-Chain)</p>
+      <p id="statTotalSupplyOnChain" class="font-mono text-lg"></p>
+    </div>
+
+    <div class="p-4 rounded-xl bg-slate-800/70 border border-slate-700">
+      <p class="text-slate-400">סה״כ הונפק</p>
+      <p id="statTotalMinted" class="font-mono text-lg"></p>
+    </div>
+
+    <div class="p-4 rounded-xl bg-slate-800/70 border border-slate-700">
+      <p class="text-slate-400">סה״כ נשרף</p>
+      <p id="statTotalBurned" class="font-mono text-lg"></p>
+    </div>
   </div>
 
+
+  <!-- סטטיסטיקות נוספות -->
+  <div class="grid gap-4 md:grid-cols-3 mb-8 text-sm">
+    <div class="p-4 rounded-xl bg-slate-800/70 border border-slate-700">
+      <p class="text-slate-400">Max Supply</p>
+      <p id="statMaxSupply" class="font-mono text-lg"></p>
+    </div>
+
+    <div class="p-4 rounded-xl bg-slate-800/70 border border-slate-700">
+      <p class="text-slate-400">מס׳ מחזיקים</p>
+      <p id="statHolders" class="font-mono text-lg"></p> <!-- FIX: statHoldersCount → statHolders -->
+    </div>
+
+    <div class="p-4 rounded-xl bg-slate-800/70 border border-slate-700">
+      <p class="text-slate-400">רזרבה (ETH)</p>
+      <p id="statReserve" class="font-mono text-lg"></p> <!-- FIX: statReserveEth → statReserve -->
+      <p class="text-xs text-slate-400 mt-1">
+        יחס רזרבה: <span id="statReserveRatio"></span>
+      </p>
+    </div>
+  </div>
+
+
+
+  <!-- Mint History -->
+  <div class="mt-8">
+    <h3 class="font-semibold mb-3">היסטוריית Mint</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs md:text-sm">
+        <thead class="text-slate-400 border-b border-slate-700">
+          <tr>
+            <th class="text-right py-2">זמן</th>
+            <th class="text-right py-2">למי</th>
+            <th class="text-right py-2">כמות</th>
+            <th class="text-right py-2">Tx</th>
+          </tr>
+        </thead>
+        <tbody id="mintHistoryBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+
+
+  <!-- Burn History -->
+  <div class="mt-8">
+    <h3 class="font-semibold mb-3">היסטוריית Burn</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs md:text-sm">
+        <thead class="text-slate-400 border-b border-slate-700">
+          <tr>
+            <th class="text-right py-2">זמן</th>
+            <th class="text-right py-2">ממי</th>
+            <th class="text-right py-2">כמות</th>
+            <th class="text-right py-2">Tx</th>
+          </tr>
+        </thead>
+        <tbody id="burnHistoryBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+
+
+  <!-- Rate History -->
+  <div class="mt-8">
+    <h3 class="font-semibold mb-3">שינויי שער (Rate History)</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs md:text-sm">
+        <thead class="text-slate-400 border-b border-slate-700">
+          <tr>
+            <th class="text-right py-2">זמן</th>
+            <th class="text-right py-2">שער חדש (ILSX/ETH)</th>
+            <th class="text-right py-2">Tx</th>
+          </tr>
+        </thead>
+        <tbody id="rateHistoryBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+
+
+  <!-- Reserve History -->
+  <div class="mt-8">
+    <h3 class="font-semibold mb-3">הפקדות/משיכות רזרבה</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs md:text-sm">
+        <thead class="text-slate-400 border-b border-slate-700">
+          <tr>
+            <th class="text-right py-2">זמן</th>
+            <th class="text-right py-2">פעולה</th>
+            <th class="text-right py-2">כתובת</th>
+            <th class="text-right py-2">כמות ETH</th>
+            <th class="text-right py-2">Tx</th>
+          </tr>
+        </thead>
+        <tbody id="reserveHistoryBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+
+
+  <!-- Security History -->
+  <div class="mt-8">
+    <h3 class="font-semibold mb-3">פעולות Blacklist / Freeze</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs md:text-sm">
+        <thead class="text-slate-400 border-b border-slate-700">
+          <tr>
+            <th class="text-right py-2">זמן</th>
+            <th class="text-right py-2">פעולה</th>
+            <th class="text-right py-2">כתובת</th>
+            <th class="text-right py-2">Tx</th>
+          </tr>
+        </thead>
+        <tbody id="securityHistoryBody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+
   <script src="./app.js"></script>
+    <!-- NEW: Subgraph Analytics -->
+  <script src="./analytics.js"></script>   <!-- NEW -->
 </body>
 </html>
