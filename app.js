@@ -1,8 +1,8 @@
 const { ethers } = window.ethers;
 
-const CONTRACT_ADDRESS = "0x2a2e78F8C21d62a7bF4cfaFf2e0F6Ae4c5B86c59";
+const CONTRACT_ADDRESS = "0x0356F64f49a421b815B066A35444BA9E14d0973f";
 const CONTRACT_ARTIFACT_PATH = "./DigitalShekel.json";
-const SUBGRAPH_ENDPOINT = "https://api.studio.thegraph.com/query/1717468/digital-shekel/v0.0.3";
+const SUBGRAPH_ENDPOINT = "https://api.studio.thegraph.com/query/1717468/digital-shekel-mainnet/version/latest";
 const DASHBOARD_SUBGRAPH_AUTH = "cb3bfdb2620ee4eb0c92266e584180b0";
 
 let CONTRACT_ABI = null;
@@ -225,13 +225,13 @@ renderHistory();
 async function fetchSupplySeriesFromSubgraph() {
   const query = `
   {
-    mintEvents(orderBy: timestamp, orderDirection: asc, first: 500) {
+    minteds(orderBy: blockTimestamp, orderDirection: asc, first: 500) {
       amount
-      timestamp
+      blockTimestamp
     }
-    burnEvents(orderBy: timestamp, orderDirection: asc, first: 500) {
+    burneds(orderBy: blockTimestamp, orderDirection: asc, first: 500) {
       amount
-      timestamp
+      blockTimestamp
     }
   }`;
 
@@ -253,12 +253,12 @@ async function fetchSupplySeriesFromSubgraph() {
 
     const json = await res.json();
     const data = json?.data || {};
-    const mints = data.mintEvents || [];
-    const burns = data.burnEvents || [];
+    const mints = data.minteds || [];
+    const burns = data.burneds || [];
 
     const events = [];
-    mints.forEach(ev => events.push({ ts: Number(ev.timestamp), delta: BigInt(ev.amount || "0") }));
-    burns.forEach(ev => events.push({ ts: Number(ev.timestamp), delta: -BigInt(ev.amount || "0") }));
+    mints.forEach(ev => events.push({ ts: Number(ev.blockTimestamp), delta: BigInt(ev.amount || "0") }));
+    burns.forEach(ev => events.push({ ts: Number(ev.blockTimestamp), delta: -BigInt(ev.amount || "0") }));
 
     events.sort((a, b) => {
       if (a.ts === b.ts) {
@@ -465,7 +465,7 @@ async function connectWallet() {
     // Require user to switch network to Sepolia
     await window.ethereum.request({
       method: "wallet_switchEthereumChain",
-      params: [{ chainId: "0xaa36a7" }], // chainId of Sepolia
+      params: [{ chainId: "0x1" }], // chainId of Mainnet
     });
 
     const abi = await ensureContractAbi();
@@ -1086,7 +1086,7 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
 });
 
 // —— Chainlink ETH/USD Feed על רשת Sepolia —— 
-const ETH_USD_FEED = "0x694AA1769357215DE4FAC081bf1f309aDC325306";
+const ETH_USD_FEED = "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419";
 
 const aggregatorAbi = [
   {
@@ -1163,7 +1163,7 @@ async function getEthUsdRate() {
   // ניסיון ראשי: Chainlink על Sepolia
   try {
     const rpc = new ethers.JsonRpcProvider(
-      "https://sepolia.infura.io/v3/fda2863bb17f492dbe50418435f09efd"
+    "https://mainnet.infura.io/v3/fda2863bb17f492dbe50418435f09efd"
     );
     const feed = new ethers.Contract(ETH_USD_FEED, aggregatorAbi, rpc);
 

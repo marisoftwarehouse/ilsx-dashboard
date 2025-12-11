@@ -69,7 +69,7 @@
       </div>
 
       <div class="mt-6 text-xs text-slate-400 border-t border-slate-800 pt-4">
-        <div>רשת: Sepolia Testnet</div>
+        <div>רשת: Ethereum Mainnet</div>
         <div class="mt-1">Contract: <span class="font-mono text-[10px]" id="sidebarContractShort">—</span></div>
       </div>
     </aside>
@@ -169,6 +169,17 @@
             </button>
 
             <p id="setRateStatus" class="text-xs mt-3"></p>
+          </div>
+
+          <!-- LAST ORACLE CONTRACT UPDATE -->
+          <div class="mt-6 p-4 rounded-2xl bg-slate-800/50 border border-slate-700">
+              <h3 class="font-bold text-lg mb-2">🕒 עדכון אחרון מהאורקל (On-Chain)</h3>
+
+              <p><span class="text-slate-400">שער:</span> <span id="lastOracleRate">—</span></p>
+              <p><span class="text-slate-400">זמן:</span> <span id="lastOracleTime">—</span></p>
+              <p><span class="text-slate-400">טרנזקציה:</span>
+                  <a id="lastOracleTx" href="#" target="_blank" class="text-blue-400">—</a>
+              </p>
           </div>
 
           <!-- FUND (Admin Only) -->

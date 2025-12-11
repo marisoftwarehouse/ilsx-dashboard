@@ -4,7 +4,7 @@
  * Version fully adapted to the updated index.html IDs
  ****************************************************************************************/
 
-const SUBGRAPH_URL = "https://api.studio.thegraph.com/query/1717468/digital-shekel/v0.0.3";
+const SUBGRAPH_URL = "https://api.studio.thegraph.com/query/1717468/digital-shekel-mainnet/version/latest";
 const ANALYTICS_SUBGRAPH_AUTH = "cb3bfdb2620ee4eb0c92266e584180b0"; // provided deploy key
 
 const compact4 = new Intl.NumberFormat("en-US", {
@@ -55,39 +55,42 @@ async function fetchSubgraph(query, variables = {}) {
 async function loadGlobalStats() {
     const query = `
     {
-      globalStats(id: "stats") {
-        totalMinted
-        totalBurned
-        reserveBalance
-        currentRate
-        holders
-      }
+      minteds(first: 1000) { amount }
+      burneds(first: 1000) { amount }
+      reserveFundeds(first: 1000) { amountEth }
+      reserveWithdrawns(first: 1000) { amountEth }
+      rateUpdateds(orderBy: blockTimestamp, orderDirection: desc, first: 1) { newRate }
     }`;
 
     const result = await fetchSubgraph(query);
-    const s = result?.globalStats;
+    const mints = result?.minteds || [];
+    const burns = result?.burneds || [];
+    const fundeds = result?.reserveFundeds || [];
+    const withdrawns = result?.reserveWithdrawns || [];
+    const rate = result?.rateUpdateds?.[0]?.newRate ?? null;
 
-    if (s) {
-        applyValue("statTotalMinted", formatNumber(s.totalMinted));
-        applyValue("statTotalBurned", formatNumber(s.totalBurned));
-        applyValue("statReserve", formatEther(s.reserveBalance) + " ETH");
+    if (mints.length || burns.length || fundeds.length || withdrawns.length) {
+        const totalMinted = mints.reduce((acc, ev) => acc + BigInt(ev.amount ?? "0"), 0n);
+        const totalBurned = burns.reduce((acc, ev) => acc + BigInt(ev.amount ?? "0"), 0n);
+        const reserveIn = fundeds.reduce((acc, ev) => acc + BigInt(ev.amountEth ?? "0"), 0n);
+        const reserveOut = withdrawns.reduce((acc, ev) => acc + BigInt(ev.amountEth ?? "0"), 0n);
+        const reserveBalance = reserveIn - reserveOut;
 
-        const ratio = Number(s.totalMinted) > 0
-            ? (Number(s.reserveBalance) / Number(s.totalMinted)).toFixed(4)
+        applyValue("statTotalMinted", formatNumber(totalMinted));
+        applyValue("statTotalBurned", formatNumber(totalBurned));
+        applyValue("statReserve", formatEther(reserveBalance) + " ETH");
+
+        const ratio = totalMinted > 0n
+            ? (Number(reserveBalance) / Number(totalMinted)).toFixed(4)
             : "0.0000";
-
         applyValue("statReserveRatio", ratio);
 
-        if (s.currentRate) {
-            applyValue("rateInfo", `${formatNumber(s.currentRate)} ILSX/ETH`);
+        if (rate) {
+            applyValue("rateInfo", `${formatNumber(rate)} ILSX/ETH`);
         }
 
-        let holderValue = formatHolderCount(s.holders);
-        const fallbackHolders = await fetchHolderCountFallback();
-        if (fallbackHolders !== null && fallbackHolders !== undefined && fallbackHolders !== false) {
-            holderValue = formatHolderCount(fallbackHolders);
-        }
-        applyValue("statHolders", holderValue);
+        // Holders are not tracked in this subgraph; skip quietly
+        applyValue("statHolders", "-");
         return;
     }
 
@@ -103,7 +106,7 @@ async function loadGlobalStats() {
             applyValue("statTotalMinted", formatNumber(tm));
             applyValue("statTotalBurned", formatNumber(tb));
             applyValue("statReserve", formatEther(reserve) + " ETH");
-            applyValue("statReserveRatio", "—");
+            applyValue("statReserveRatio", "-");
             applyValue("rateInfo", `${formatNumber(rate)} ILSX/ETH`);
             applyValue("statHolders", formatHolderCount(await fetchHolderCountFallback()));
         } catch (err) {
@@ -136,17 +139,17 @@ async function loadTotalSupplyOnChain() {
 async function loadMintHistory() {
     const query = `
     {
-      mintEvents(orderBy: timestamp, orderDirection: desc, first: 100) {
+      minteds(orderBy: blockTimestamp, orderDirection: desc, first: 100) {
         id
         to
         amount
-        txHash
-        timestamp
+        transactionHash
+        blockTimestamp
       }
     }`;
 
     const data = await fetchSubgraph(query);
-    let events = data?.mintEvents || [];
+    let events = data?.minteds || [];
 
     if ((!events || events.length === 0) && window.contract && window.provider) {
         events = await fetchOnChainEvents("Minted", "amount", "to");
@@ -155,12 +158,14 @@ async function loadMintHistory() {
     let html = "";
 
     events.forEach(ev => {
-        const txLink = ev.txHash
-            ? `<a href="https://sepolia.etherscan.io/tx/${ev.txHash}" target="_blank" class="text-blue-400">View</a>`
+        const txHash = ev.transactionHash || ev.txHash;
+        const ts = ev.blockTimestamp || ev.timestamp;
+        const txLink = txHash
+            ? `<a href="https://etherscan.io/tx/${txHash}" target="_blank" class="text-blue-400">View</a>`
             : "-";
         html += `
           <tr>
-            <td>${formatDate(ev.timestamp)}</td>
+            <td>${formatDate(ts)}</td>
             <td>${shortAddress(ev.to)}</td>
             <td>${formatNumber(ev.amount)}</td>
             <td>${txLink}</td>
@@ -182,17 +187,17 @@ async function loadMintHistory() {
 async function loadBurnHistory() {
     const query = `
     {
-      burnEvents(orderBy: timestamp, orderDirection: desc, first: 100) {
+      burneds(orderBy: blockTimestamp, orderDirection: desc, first: 100) {
         id
         from
         amount
-        txHash
-        timestamp
+        transactionHash
+        blockTimestamp
       }
     }`;
 
     const data = await fetchSubgraph(query);
-    let events = data?.burnEvents || [];
+    let events = data?.burneds || [];
 
     if ((!events || events.length === 0) && window.contract && window.provider) {
         events = await fetchOnChainEvents("Burned", "amount", "from");
@@ -201,12 +206,14 @@ async function loadBurnHistory() {
     let html = "";
 
     events.forEach(ev => {
-        const txLink = ev.txHash
-            ? `<a href="https://sepolia.etherscan.io/tx/${ev.txHash}" target="_blank" class="text-blue-400">View</a>`
+        const txHash = ev.transactionHash || ev.txHash;
+        const ts = ev.blockTimestamp || ev.timestamp;
+        const txLink = txHash
+            ? `<a href="https://etherscan.io/tx/${txHash}" target="_blank" class="text-blue-400">View</a>`
             : "-";
         html += `
           <tr>
-            <td>${formatDate(ev.timestamp)}</td>
+            <td>${formatDate(ts)}</td>
             <td>${shortAddress(ev.from)}</td>
             <td>${formatNumber(ev.amount)}</td>
             <td>${txLink}</td>
@@ -228,16 +235,16 @@ async function loadBurnHistory() {
 async function loadRateChanges() {
     const query = `
     {
-      rateChangeEvents(orderBy: timestamp, orderDirection: desc, first: 100) {
+      rateUpdateds(orderBy: blockTimestamp, orderDirection: desc, first: 100) {
         id
         newRate
-        txHash
-        timestamp
+        transactionHash
+        blockTimestamp
       }
     }`;
 
     const data = await fetchSubgraph(query);
-    let events = data?.rateChangeEvents || [];
+    let events = data?.rateUpdateds || [];
 
     if ((!events || events.length === 0) && window.contract && window.provider) {
         events = await fetchOnChainEvents("RateUpdated", "newRate");
@@ -246,13 +253,15 @@ async function loadRateChanges() {
     let html = "";
 
     events.forEach(ev => {
-        const txLink = ev.txHash
-            ? `<a href="https://sepolia.etherscan.io/tx/${ev.txHash}" target="_blank" class="text-blue-400">View</a>`
+        const txHash = ev.transactionHash || ev.txHash;
+        const ts = ev.blockTimestamp || ev.timestamp;
+        const txLink = txHash
+            ? `<a href="https://etherscan.io/tx/${txHash}" target="_blank" class="text-blue-400">View</a>`
             : "-";
         const rateValue = ev.newRate ? formatNumber(ev.newRate) : "-";
         html += `
           <tr>
-            <td>${formatDate(ev.timestamp)}</td>
+            <td>${formatDate(ts)}</td>
             <td>${rateValue}</td>
             <td>${txLink}</td>
           </tr>
@@ -273,19 +282,19 @@ async function loadRateChanges() {
 async function loadReserveHistory() {
     const query = `
     {
-      reserveDepositEvents(orderBy: timestamp, orderDirection: desc, first: 100) {
+      reserveFundeds(orderBy: blockTimestamp, orderDirection: desc, first: 100) {
         id
         from
-        amount
-        txHash
-        timestamp
+        amountEth
+        transactionHash
+        blockTimestamp
       }
-      reserveWithdrawEvents(orderBy: timestamp, orderDirection: desc, first: 100) {
+      reserveWithdrawns(orderBy: blockTimestamp, orderDirection: desc, first: 100) {
         id
         to
-        amount
-        txHash
-        timestamp
+        amountEth
+        transactionHash
+        blockTimestamp
       }
     }`;
 
@@ -293,8 +302,8 @@ async function loadReserveHistory() {
 
     let html = "";
 
-    let deposits = data?.reserveDepositEvents || [];
-    let withdraws = data?.reserveWithdrawEvents || [];
+    let deposits = data?.reserveFundeds || [];
+    let withdraws = data?.reserveWithdrawns || [];
 
     if (deposits.length === 0 && window.contract && window.provider) {
         deposits = await fetchOnChainEvents("ReserveFunded", "amountEth", "from");
@@ -305,30 +314,34 @@ async function loadReserveHistory() {
 
     // Deposits
     deposits.forEach(ev => {
-        const txLink = ev.txHash
-            ? `<a href="https://sepolia.etherscan.io/tx/${ev.txHash}" target="_blank" class="text-blue-400">View</a>`
+        const txHash = ev.transactionHash || ev.txHash;
+        const ts = ev.blockTimestamp || ev.timestamp;
+        const txLink = txHash
+            ? `<a href="https://etherscan.io/tx/${txHash}" target="_blank" class="text-blue-400">View</a>`
             : "-";
         html += `
           <tr>
-            <td>${formatDate(ev.timestamp)}</td>
+            <td>${formatDate(ts)}</td>
             <td>Deposit</td>
             <td>${shortAddress(ev.from)}</td>
-            <td>${formatEther(ev.amount)}</td>
+            <td>${formatEther(ev.amountEth)}</td>
             <td>${txLink}</td>
           </tr>`;
     });
 
     // Withdrawals
     withdraws.forEach(ev => {
-        const txLink = ev.txHash
-            ? `<a href="https://sepolia.etherscan.io/tx/${ev.txHash}" target="_blank" class="text-blue-400">View</a>`
+        const txHash = ev.transactionHash || ev.txHash;
+        const ts = ev.blockTimestamp || ev.timestamp;
+        const txLink = txHash
+            ? `<a href="https://etherscan.io/tx/${txHash}" target="_blank" class="text-blue-400">View</a>`
             : "-";
         html += `
           <tr>
-            <td>${formatDate(ev.timestamp)}</td>
+            <td>${formatDate(ts)}</td>
             <td>Withdraw</td>
             <td>${shortAddress(ev.to)}</td>
-            <td>${formatEther(ev.amount)}</td>
+            <td>${formatEther(ev.amountEth)}</td>
             <td>${txLink}</td>
           </tr>`;
     });
@@ -347,12 +360,25 @@ async function loadReserveHistory() {
 async function loadSecurityHistory() {
     const query = `
     {
-      blacklistEvents(orderBy: timestamp, orderDirection: desc, first: 100) {
-        id
-        account
-        action
-        txHash
-        timestamp
+      blacklisteds(orderBy: blockTimestamp, orderDirection: desc, first: 100) {
+        wallet
+        blockTimestamp
+        transactionHash
+      }
+      unblacklisteds(orderBy: blockTimestamp, orderDirection: desc, first: 100) {
+        wallet
+        blockTimestamp
+        transactionHash
+      }
+      frozens(orderBy: blockTimestamp, orderDirection: desc, first: 100) {
+        wallet
+        blockTimestamp
+        transactionHash
+      }
+      unfrozens(orderBy: blockTimestamp, orderDirection: desc, first: 100) {
+        wallet
+        blockTimestamp
+        transactionHash
       }
     }`;
 
@@ -360,26 +386,38 @@ async function loadSecurityHistory() {
 
     let html = "";
 
-    let events = data?.blacklistEvents || [];
+    const blacks = (data?.blacklisteds || []).map(ev => ({ action: "blacklist", wallet: ev.wallet, timestamp: ev.blockTimestamp, txHash: ev.transactionHash }));
+    const unblacks = (data?.unblacklisteds || []).map(ev => ({ action: "unblacklist", wallet: ev.wallet, timestamp: ev.blockTimestamp, txHash: ev.transactionHash }));
+    const freezes = (data?.frozens || []).map(ev => ({ action: "freeze", wallet: ev.wallet, timestamp: ev.blockTimestamp, txHash: ev.transactionHash }));
+    const unfreezes = (data?.unfrozens || []).map(ev => ({ action: "unfreeze", wallet: ev.wallet, timestamp: ev.blockTimestamp, txHash: ev.transactionHash }));
+
+    let events = [...blacks, ...unblacks, ...freezes, ...unfreezes]
+        .filter(ev => ev.txHash)
+        .sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0))
+        .slice(0, 100);
 
     if (events.length === 0 && window.contract && window.provider) {
-        const blacks = await fetchOnChainEvents("Blacklisted", null, "account", "blacklist");
-        const unblacks = await fetchOnChainEvents("Unblacklisted", null, "account", "unblacklist");
-        const freezes = await fetchOnChainEvents("Frozen", null, "account", "freeze");
-        const unfreezes = await fetchOnChainEvents("Unfrozen", null, "account", "unfreeze");
-        events = [...blacks, ...unblacks, ...freezes, ...unfreezes].sort((a,b)=>Number(b.timestamp)-Number(a.timestamp)).slice(0,100);
+        const chainBlacks = await fetchOnChainEvents("Blacklisted", null, "account", "blacklist");
+        const chainUnblacks = await fetchOnChainEvents("Unblacklisted", null, "account", "unblacklist");
+        const chainFreezes = await fetchOnChainEvents("Frozen", null, "account", "freeze");
+        const chainUnfreezes = await fetchOnChainEvents("Unfrozen", null, "account", "unfreeze");
+        events = [...chainBlacks, ...chainUnblacks, ...chainFreezes, ...chainUnfreezes]
+            .sort((a,b)=>Number(b.timestamp)-Number(a.timestamp))
+            .slice(0,100);
     }
 
     events.forEach(ev => {
         const label = mapSecurityAction(ev.action);
-        const txLink = ev.txHash
-            ? `<a href="https://sepolia.etherscan.io/tx/${ev.txHash}" target="_blank" class="text-blue-400">View</a>`
+        const txHash = ev.transactionHash || ev.txHash;
+        const ts = ev.blockTimestamp || ev.timestamp;
+        const txLink = txHash
+            ? `<a href="https://etherscan.io/tx/${txHash}" target="_blank" class="text-blue-400">View</a>`
             : "-";
         html += `
           <tr>
-            <td>${formatDate(ev.timestamp)}</td>
+            <td>${formatDate(ts)}</td>
             <td>${label}</td>
-            <td>${shortAddress(ev.account)}</td>
+            <td>${shortAddress(ev.wallet || ev.account)}</td>
             <td>${txLink}</td>
           </tr>`;
     });
@@ -457,21 +495,8 @@ function applyTableScroll(bodyId, maxHeightPx = 165) {
 }
 
 async function fetchHolderCountFallback() {
-    const query = `
-    {
-      accounts(where: { balance_gt: "0" }, first: 1000) {
-        id
-      }
-    }`;
-
-    try {
-        const data = await fetchSubgraph(query);
-        if (data?.accounts) return data.accounts.length;
-        return null;
-    } catch (err) {
-        console.warn("holders fallback failed", err);
-        return null;
-    }
+    // This schema does not expose per-account balances, so skip gracefully.
+    return null;
 }
 
 async function fetchOnChainEvents(eventName, amountField = "amount", addrField = null, actionLabel = null) {
@@ -519,6 +544,32 @@ function applyValue(id, value) {
     }
 }
 
+async function loadLastOracleUpdate() {
+    const query = `
+    {
+      rateUpdateds(orderBy: blockTimestamp, orderDirection: desc, first: 1) {
+        newRate
+        transactionHash
+        blockTimestamp
+      }
+    }`;
+
+    const data = await fetchSubgraph(query);
+    const ev = data?.rateUpdateds?.[0];
+
+    if (!ev) return;
+
+    document.getElementById("lastOracleRate").textContent =
+        formatNumber(ev.newRate) + " ILSX/ETH";
+
+    document.getElementById("lastOracleTime").textContent =
+        formatDate(ev.blockTimestamp);
+
+    const link = document.getElementById("lastOracleTx");
+    link.href = `https://etherscan.io/tx/${ev.transactionHash}`;
+    link.textContent = ev.transactionHash.slice(0, 10) + "...";
+}
+
 /* ============================================================
     INIT
 ============================================================ */
@@ -530,7 +581,7 @@ async function initAnalytics() {
     await loadRateChanges();
     await loadReserveHistory();
     await loadSecurityHistory();
-
+    await loadLastOracleUpdate();   // <<< NEW
     console.log("ILSX Analytics Loaded ✔");
 }
 
